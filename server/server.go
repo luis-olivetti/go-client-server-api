@@ -10,22 +10,6 @@ import (
 	"time"
 )
 
-type CambioDolarReal struct {
-	USDBRL struct {
-		Code       string `json:"code"`
-		Codein     string `json:"codein"`
-		Name       string `json:"name"`
-		High       string `json:"high"`
-		Low        string `json:"low"`
-		VarBid     string `json:"varBid"`
-		PctChange  string `json:"pctChange"`
-		Bid        string `json:"bid"`
-		Ask        string `json:"ask"`
-		Timestamp  string `json:"timestamp"`
-		CreateDate string `json:"create_date"`
-	} `json:"USDBRL"`
-}
-
 func main() {
 	initServer()
 }
@@ -36,58 +20,37 @@ func initServer() {
 	http.ListenAndServe(":8080", nil)
 }
 
-func BuscaCambioDolarReal(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/cotacao" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	ctx := r.Context()
-
-	client := &http.Client{
-		Timeout: 200 * time.Millisecond,
-	}
-
-	url := "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+func fetchCambio(ctx context.Context, url string) (CambioDolarReal, error) {
+	var cambio CambioDolarReal
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return cambio, err
 	}
 
-	response, err := client.Do(req)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Println(err)
-		return
+		return cambio, err
 	}
-	defer response.Body.Close()
+	defer res.Body.Close()
 
-	body, err := io.ReadAll(response.Body)
+	if res.StatusCode != http.StatusOK {
+		return cambio, err
+	}
+
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return cambio, err
 	}
 
-	var cambioDolarReal CambioDolarReal
-	err = json.Unmarshal(body, &cambioDolarReal)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	saveCambioToDB(&cambioDolarReal)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(cambioDolarReal)
+	err = json.Unmarshal(body, &cambio)
+	return cambio, err
 }
 
 func saveCambioToDB(cambio *CambioDolarReal) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	// Grava no banco de dados usando GORM
 	registro := Cambio{
 		Code:       cambio.USDBRL.Code,
 		Codein:     cambio.USDBRL.Codein,
@@ -102,10 +65,9 @@ func saveCambioToDB(cambio *CambioDolarReal) error {
 		CreateDate: cambio.USDBRL.CreateDate,
 	}
 
-	result := db.WithContext(ctx).Create(&registro) // Passa uma referência do modelo para Create
+	result := db.WithContext(ctx).Create(&registro)
 	if result.Error != nil {
 		if errors.Is(result.Error, context.DeadlineExceeded) {
-			// Se o erro for devido ao timeout
 			log.Println("Operation timed out")
 		} else {
 			log.Println(result.Error)
@@ -115,22 +77,57 @@ func saveCambioToDB(cambio *CambioDolarReal) error {
 	return nil
 }
 
+func BuscaCambioDolarReal(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/cotacao" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 200*time.Millisecond)
+	defer cancel()
+
+	cambio, err := fetchCambio(ctx, "https://economia.awesomeapi.com.br/json/last/USD-BRL")
+	if err != nil {
+		println(err)
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			return
+		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	saveCambioToDB(&cambio)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	json.NewEncoder(w).Encode(cambio)
+}
+
 func BuscaCambioFromDB(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/cotacao-on-db" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
 	defer cancel()
 
 	var cambios []Cambio
-	result := db.WithContext(ctx).Find(&cambios)
+	result := db.WithContext(ctx).Order("created_at desc").Find(&cambios)
 	if result.Error != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		println(result.Error)
 
 		if errors.Is(result.Error, context.DeadlineExceeded) {
 			w.WriteHeader(http.StatusGatewayTimeout)
+			return
 		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	if len(cambios) == 0 {
@@ -139,6 +136,7 @@ func BuscaCambioFromDB(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
 	err := json.NewEncoder(w).Encode(cambios)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

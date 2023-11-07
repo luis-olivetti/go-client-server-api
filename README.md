@@ -1,10 +1,4 @@
-execute `go run .`
-
-`go mod tidy` para verificar pacotes e importar/remover automaticamente
-
----
-
-Olá dev, tudo bem?
+## Desafio
  
 Neste desafio vamos aplicar o que aprendemos sobre webserver http, contextos,
 banco de dados e manipulação de arquivos com Go.
@@ -30,3 +24,15 @@ O client.go terá que salvar a cotação atual em um arquivo "cotacao.txt" no fo
 O endpoint necessário gerado pelo server.go para este desafio será: /cotacao e a porta a ser utilizada pelo servidor HTTP será a 8080.
  
 Ao finalizar, envie o link do repositório para correção.
+
+## Como executar este projeto?
+
+Execute os seguinte comando no diretório **server** e logo após no diretório **client**
+```shell
+$ go run .
+```
+
+## Endpoints disponíveis em server
+
+- GET http://localhost:8080/cotacao - Retorna a última cotação do Dólar em Reais
+- GET http://localhost:8080/cotacao-on-db - Retorna o histórico de cotações em ordem decrescente
