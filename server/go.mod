@@ -1,4 +1,4 @@
-module luis.olivetti/go-client-server-api/server
+module github.com/luis-olivetti/go-client-server-api/server
 
 go 1.21.3
 
