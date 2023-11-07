@@ -27,7 +27,7 @@ Ao finalizar, envie o link do repositório para correção.
 
 ## Como executar este projeto?
 
-Execute os seguinte comando no diretório **server** e logo após no diretório **client**
+Execute o seguinte comando no diretório **server** e logo após no diretório **client**
 ```shell
 $ go run .
 ```
