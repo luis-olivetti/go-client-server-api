@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -46,12 +48,18 @@ func main() {
 
 	cambio, err := fetchCambio(ctx, "http://localhost:8080/cotacao")
 	if err != nil {
-		panic(err)
+		log.Println("Fetch failed. Details: " + err.Error())
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Println("Operation timed out (HTTP)")
+		}
+
+		return
 	}
 
 	content := "Dólar: " + cambio.USDBRL.Bid
 	err = writeToFile("cotacao.txt", content)
 	if err != nil {
-		panic(err)
+		log.Println("Failed to write cotacao.txt")
 	}
 }

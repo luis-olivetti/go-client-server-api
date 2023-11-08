@@ -67,11 +67,6 @@ func saveCambioToDB(cambio *CambioDolarReal) error {
 
 	result := db.WithContext(ctx).Create(&registro)
 	if result.Error != nil {
-		if errors.Is(result.Error, context.DeadlineExceeded) {
-			log.Println("Operation timed out")
-		} else {
-			log.Println(result.Error)
-		}
 		return result.Error
 	}
 	return nil
@@ -88,10 +83,11 @@ func BuscaCambioDolarReal(w http.ResponseWriter, r *http.Request) {
 
 	cambio, err := fetchCambio(ctx, "https://economia.awesomeapi.com.br/json/last/USD-BRL")
 	if err != nil {
-		println(err)
+		log.Println(err.Error())
 
 		if errors.Is(err, context.DeadlineExceeded) {
 			w.WriteHeader(http.StatusGatewayTimeout)
+			log.Println("Operation timed out (HTTP)")
 			return
 		}
 
@@ -99,7 +95,19 @@ func BuscaCambioDolarReal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saveCambioToDB(&cambio)
+	err = saveCambioToDB(&cambio)
+	if err != nil {
+		log.Println(err.Error())
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			log.Println("Operation timed out (DB)")
+			return
+		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -119,10 +127,11 @@ func BuscaCambioFromDB(w http.ResponseWriter, r *http.Request) {
 	var cambios []Cambio
 	result := db.WithContext(ctx).Order("created_at desc").Find(&cambios)
 	if result.Error != nil {
-		println(result.Error)
+		log.Println(result.Error)
 
 		if errors.Is(result.Error, context.DeadlineExceeded) {
 			w.WriteHeader(http.StatusGatewayTimeout)
+			log.Println("Operation timed out (DB)")
 			return
 		}
 
